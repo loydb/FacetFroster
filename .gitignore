@@ -1,0 +1,27 @@
+# Build output
+build/
+dist/
+out/
+*.class
+
+# Sean O'Neil's Edge Frosting Tool — his IP, obtained separately, never committed
+lap/
+edge-frosting-tool/
+frost.jar
+*.jar
+
+# Packaged binaries (embed Sean's classes — do not distribute without his OK)
+*.zip
+*.exe
+frost.cmd
+
+# Sample / working design files
+*.gcs
+!docs/*.gcs
+
+# Renders & scratch
+*.png
+!docs/*.png
+ckpt_*/
+*.log
+*.dump
