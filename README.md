@@ -65,35 +65,48 @@ also:
 
 ## Building
 
-Requires a JDK (developed against JDK 25) and Sean O'Neil's Edge Frosting Tool
-(the compiled `lap/` classes / jar).
+Requires a JDK (developed against JDK 25 — needs `javac`, `jar`, and, for the
+exe, `jpackage`) and Sean O'Neil's Edge Frosting Tool (the folder with his
+compiled `lap/` classes). Point the build at your copy of his tool:
+
+```powershell
+# from the repo root — builds out\frost.jar (+ a self-contained exe zip):
+powershell -File scripts\build_exe.ps1 -Tool <path-to-edge-frosting-tool>
+powershell -File scripts\build_exe.ps1 -Tool <path-to-edge-frosting-tool> -NoExe   # jar only
+```
+
+Or compile by hand (compile the `Messages` shadow first so the frosters link
+against the console version, not the tool's dialog version):
 
 ```
-# point the classpath at Sean's tool, then:
-javac -cp "<edge-frosting-tool>" src/Messages.java src/FrostCLI.java -d build
-# (compile Messages first so FrostCLI links against the console shadow)
+javac -cp "<edge-frosting-tool>" -d build src\Messages.java
+javac -cp "build;<edge-frosting-tool>" -d build src\FrostCLI.java src\FrostCkpt.java
 ```
 
-`scripts/build_exe.ps1` builds a self-contained Windows exe (bundles a JRE via
-`jpackage`) and a runnable jar. Because that packaging embeds Sean's classes,
-**only distribute the result if his license permits it** (see below).
+The built jar/exe **embed Sean's classes** — only distribute them if his license
+permits it (see [Licensing](#licensing)).
 
 ## Usage
 
 ```
-frost <input.gcs> [width | N%] [-o out.gcs]
+java -jar out\frost.jar <input.gcs> [width | N%] [-o out.gcs]
 ```
+
+(or run `frost\frost.exe` from the extracted self-contained zip — no Java needed).
 
 - Output defaults to `<input dir>\<name>_frosted.gcs`.
 - `width`: a bare number = model units; `N%` = percent of model width (default 1%).
 - Thin-girdle designs: a 1% bevel can overlap into spiky geometry — use a
   smaller width (e.g. `0.3%`).
 
-Checkpointed (long runs):
+Checkpointed (large/dense designs, many minutes) — a rolling window of 3 `.gcs`
+snapshots every `pct`%, so a crash/power-loss doesn't lose the whole run:
 
 ```
-java -cp "<scratch>;<build-with-Messages-shadow>" FrostCkpt <in.gcs> <out.gcs> <width|N%> <ckptDir> [pct]
+java -cp out\frost.jar FrostCkpt <in.gcs> <out.gcs> <width|N%> <ckptDir> [pct]
 ```
+
+`scripts\frost_checkpointed.ps1` wraps that with auto-restart on a true hang.
 
 ## Licensing
 
@@ -110,6 +123,6 @@ java -cp "<scratch>;<build-with-Messages-shadow>" FrostCkpt <in.gcs> <out.gcs> <
 | `src/FrostCLI.java` | one-shot froster: verbatim load + auto-tune + progress bar + corrected exporter |
 | `src/FrostCkpt.java` | checkpointing froster (rolling-N `.gcs` snapshots) for long runs |
 | `src/Messages.java` | console shadow of the tool's `lap.menu.Messages` (no blocking dialogs) |
-| `scripts/build_exe.ps1` | build + verify a self-contained exe (zips it; Dropbox-safe) |
+| `scripts/build_exe.ps1` | build + verify `frost.jar` and a self-contained exe zip (`-Tool <path>`) |
 | `scripts/frost_checkpointed.ps1` | parameterized recovery runner (rolling checkpoints + auto-restart on hang) |
 | `scripts/format_frosted.py` | alternate two-step formatter |
