@@ -6,7 +6,7 @@ GemCutStudio `.gcs` faceting designs — including dense, high–facet-count mod
 load. It adds a live progress bar, batch/automation support, checkpointing for
 long runs, and a corrected `.gcs` exporter, and it runs with no GUI.
 
-<!-- TODO: add docs/superegg_frosted.png — a render of a frosted design as the hero image -->
+![A "superegg quartz" design with every facet edge frosted](docs/superegg_frosted.png)
 
 ---
 
