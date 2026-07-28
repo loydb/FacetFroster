@@ -111,5 +111,5 @@ java -cp "<scratch>;<build-with-Messages-shadow>" FrostCkpt <in.gcs> <out.gcs> <
 | `src/FrostCkpt.java` | checkpointing froster (rolling-N `.gcs` snapshots) for long runs |
 | `src/Messages.java` | console shadow of the tool's `lap.menu.Messages` (no blocking dialogs) |
 | `scripts/build_exe.ps1` | build + verify a self-contained exe (zips it; Dropbox-safe) |
-| `scripts/run_superegg.ps1` | watchdog runner example |
+| `scripts/frost_checkpointed.ps1` | parameterized recovery runner (rolling checkpoints + auto-restart on hang) |
 | `scripts/format_frosted.py` | alternate two-step formatter |
