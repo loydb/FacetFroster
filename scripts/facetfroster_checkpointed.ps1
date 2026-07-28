@@ -1,6 +1,6 @@
-# Recovery runner for a long FrostCkpt frost (large/dense designs, many minutes).
+# Recovery runner for a long FacetFrosterCkpt frost (large/dense designs, many minutes).
 #
-# Runs FrostCkpt (correct result + rolling-3 .gcs checkpoints every 10%). If it
+# Runs FacetFrosterCkpt (correct result + rolling-3 .gcs checkpoints every 10%). If it
 # genuinely stalls (checkpoint progress stops advancing for a long time) or the
 # JVM dies without producing output, it restarts FRESH (resume-continuation
 # diverges because the tool's cut() carries hidden state). Renders on success if
@@ -14,27 +14,27 @@
 #     lives in -BuildDir); this watchdog is only for power-loss / true hangs.
 #
 # Usage:
-#   powershell -File frost_checkpointed.ps1 -InputGcs design.gcs [-OutputGcs out.gcs]
-#             [-BuildDir build] [-Width 1%] [-Viewer path\to\gcs_viewer.py]
+#   powershell -File facetfroster_checkpointed.ps1 -InputGcs design.gcs [-OutputGcs out.gcs]
+#             [-Jar out\FacetFroster.jar] [-Width 1%] [-Viewer path\to\gcs_viewer.py]
 param(
   [Parameter(Mandatory=$true)][string]$InputGcs,
   [string]$OutputGcs,
-  [string]$BuildDir,                 # must contain lap\ + the Messages shadow (build_exe.ps1 makes this)
+  [string]$Jar,                      # built FacetFroster.jar (build_exe.ps1 makes it); has FacetFrosterCkpt + Messages shadow
   [string]$Width = "1%",
   [string]$Viewer,                   # optional: path to gcs_viewer.py to render on success
   [int]$StallLimit = 900             # seconds with no checkpoint-progress advance => treat as hung
 )
 $ErrorActionPreference = "Continue"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-if (-not $BuildDir)   { $BuildDir   = Join-Path $here "build" }
+if (-not $Jar)        { $Jar        = Join-Path (Split-Path -Parent $here) "out\FacetFroster.jar" }
 if (-not $OutputGcs)  { $OutputGcs  = [System.IO.Path]::ChangeExtension($InputGcs, $null).TrimEnd('.') + "_frosted.gcs" }
 $cd     = Join-Path $here "ckpt_run"
 $render = [System.IO.Path]::ChangeExtension($OutputGcs, ".png")
 $log    = Join-Path $here "run.log"
 function Log($m){ "$((Get-Date).ToString('HH:mm:ss'))  $m" | Tee-Object -FilePath $log -Append | Out-Null }
 
-if (-not (Test-Path (Join-Path $BuildDir "lap\menu\Messages.class"))) {
-  Log "ERROR: $BuildDir lacks the Messages shadow. Run build_exe.ps1 first (it stages build\)."; exit 1
+if (-not (Test-Path $Jar)) {
+  Log "ERROR: FacetFroster.jar not found at '$Jar'. Run build_exe.ps1 first."; exit 1
 }
 
 $success = $false
@@ -42,8 +42,8 @@ for ($attempt = 1; $attempt -le 6 -and -not $success; $attempt++) {
   Get-Process java -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue   # clear any zombies
   Remove-Item $cd -Recurse -Force -EA SilentlyContinue; New-Item -ItemType Directory -Force $cd | Out-Null
   Remove-Item $OutputGcs -EA SilentlyContinue
-  Log "attempt ${attempt}: launching FrostCkpt"
-  Start-Process -FilePath "java" -ArgumentList @("-cp","$BuildDir","FrostCkpt",$InputGcs,$OutputGcs,$Width,$cd,"10") `
+  Log "attempt ${attempt}: launching FacetFrosterCkpt"
+  Start-Process -FilePath "java" -ArgumentList @("-cp","$Jar","FacetFrosterCkpt",$InputGcs,$OutputGcs,$Width,$cd,"10") `
     -RedirectStandardOutput (Join-Path $here "run_ck.log") -RedirectStandardError (Join-Path $here "run_ck.err") -WindowStyle Hidden | Out-Null
 
   $lastProg = -1; $lastAdvance = Get-Date

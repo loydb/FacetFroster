@@ -9,13 +9,13 @@ import java.util.regex.*;
 
 /**
  * Checkpointing edge-froster for GemCutStudio .gcs.
- *   FrostCkpt <input.gcs> <output.gcs> <width|N%> <ckptDir> [pct]
+ *   FacetFrosterCkpt <input.gcs> <output.gcs> <width|N%> <ckptDir> [pct]
  * Drives the tool's frosting loop by hand (validated identical to
  * cutFrostedEdges) so it can save a rolling window of 3 checkpoints every
  * `pct`% (default 10) and RESUME after a crash/freeze. If ckptDir already has
  * checkpoints for this input, it resumes from the newest one.
  */
-public class FrostCkpt {
+public class FacetFrosterCkpt {
     static final int ROLL = 3;
     static Point3D<Double> P(double x,double y,double z){ return new Point3D<Double>(x,y,z); }
     static double clamp(double v){ return Math.max(-1, Math.min(1, v)); }

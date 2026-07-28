@@ -17,7 +17,7 @@ import java.util.regex.*;
  * runs Sean O'Neil's cutFrostedEdges on the resulting clean manifold, with a
  * live console progress bar. Self-contained (bundles the lap.* classes).
  */
-public class FrostCLI {
+public class FacetFroster {
     static Point3D<Double> P(double x, double y, double z) { return new Point3D<Double>(x, y, z); }
     static String key(double nx, double ny, double nz, double cn) {
         return String.format("%.5f_%.5f_%.5f_%.5f", nx, ny, nz, cn);

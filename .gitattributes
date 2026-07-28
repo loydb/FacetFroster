@@ -1,0 +1,14 @@
+# Normalize line endings across platforms
+* text=auto
+
+*.java   text
+*.py     text
+*.md     text
+*.cmd    text eol=crlf
+*.ps1    text eol=crlf
+
+# Binary assets — never munge
+*.png    binary
+*.jar    binary
+*.zip    binary
+*.gcs    binary
