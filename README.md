@@ -65,11 +65,6 @@ Please credit **Sean O'Neil's Edge Frosting Tool** in any use of FacetFroster.
 His official release (a runnable jar that also includes his scaled-PDF feature):
 <https://www.mediafire.com/file/ood63rjcv8ixorv/edge-frosting-tool-plus-scaled-pdf-v7.jar/file>
 
-The prebuilt binaries on the [releases page](https://github.com/loydb/FacetFroster/releases/latest)
-embed his tool and are published **with his permission**. His tool is **not**
-in this source repository — to build from source you download it yourself (see
-[Building](#building)).
-
 ## Why this exists
 
 Gem Cut Studio and Sean's tool both reconstruct a gem by **replaying each tier
