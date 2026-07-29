@@ -18,7 +18,7 @@ the same.)
 *A 1442-facet "superegg quartz" before and after — every facet edge frosted, the
 frosted bands written as proper Gem Cut Studio tiers.*
 
-## Is this useful to you? (an honest note)
+## Is this useful to you?
 
 I'm not sure how many people this will help. Sean's Java froster — the tool this
 is built on — is far more full-featured: it lets you choose which tiers to
