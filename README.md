@@ -18,6 +18,20 @@ the same.)
 *A 1442-facet "superegg quartz" before and after — every facet edge frosted, the
 frosted bands written as proper Gem Cut Studio tiers.*
 
+## Is this useful to you? (an honest note)
+
+I'm not sure how many people this will help. Sean's Java froster — the tool this
+is built on — is far more full-featured: it lets you choose which tiers to
+frost, and more. Its one catch is that it fails with a manifold collapse when a
+design packs a lot of facets at very close angles.
+
+This project grew out of a request on the faceting Discord to frost a 2000+
+facet superegg. Unlike Sean's tool, FacetFroster just adds edge frosting to
+*every* facet in whatever design you feed it — the final SuperEgg came out at
+almost 4,500 facets. You can always edit the resulting `.gcs` by hand afterward.
+
+Hopefully someone else gets some use out of it.
+
 ## About Gem Cut Studio
 
 [**Gem Cut Studio**](https://gemcutstudio.com/), by **Rej Poirier**, is design
