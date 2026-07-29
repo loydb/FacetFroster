@@ -3,8 +3,9 @@
 #
 #   powershell -File build_exe.ps1 -Tool <path-to-edge-frosting-tool> [-OutDir out] [-NoExe]
 #
-# -Tool    folder containing Sean's compiled classes (has lap\ and META-INF\).
-#          This is his work; you supply it separately, it is not in this repo.
+# -Tool    Sean's Edge Frosting Tool: either his distributed .jar, or a folder
+#          containing his compiled classes (lap\). His work; you supply it
+#          separately (download link in the README), it is not in this repo.
 # -OutDir  where to write FacetFroster.jar and the exe zip (default: repo root\out).
 # -NoExe   skip the self-contained exe (just build FacetFroster.jar).
 #
@@ -23,8 +24,16 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path       # ...\scripts
 $src  = Join-Path (Split-Path -Parent $here) "src"
 if (-not $OutDir) { $OutDir = Join-Path (Split-Path -Parent $here) "out" }
 
+# Sean distributes his tool as a .jar; also accept an already-extracted folder.
+if ((Test-Path $Tool) -and ($Tool -like '*.jar')) {
+  $toolDir = Join-Path $env:TEMP ("facetfroster_tool_" + [System.Diagnostics.Process]::GetCurrentProcess().Id)
+  Remove-Item $toolDir -Recurse -Force -ErrorAction SilentlyContinue
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  [System.IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path $Tool).Path, $toolDir)  # a jar is a zip
+  $Tool = $toolDir
+}
 if (-not (Test-Path (Join-Path $Tool "lap\model\Gem.class"))) {
-  throw "-Tool '$Tool' does not contain Sean's Edge Frosting Tool (expected lap\model\Gem.class)"
+  throw "-Tool '$Tool' is not Sean's Edge Frosting Tool (expected his .jar, or a folder with lap\model\Gem.class)"
 }
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 
