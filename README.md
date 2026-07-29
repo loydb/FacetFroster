@@ -1,14 +1,40 @@
 # FacetFroster
 
-A headless, scriptable command-line tool for adding **edge frosting** to
-GemCutStudio `.gcs` faceting designs — including dense, high–facet-count models
-(curved supereggs, spheres, freeform solids) that the interactive tool cannot
-load. It adds a live progress bar, batch/automation support, checkpointing for
-long runs, and a corrected `.gcs` exporter, and it runs with no GUI.
+[![latest release](https://img.shields.io/github/v/release/loydb/FacetFroster)](https://github.com/loydb/FacetFroster/releases/latest)
+
+Add **edge frosting** to [Gem Cut Studio](https://gemcutstudio.com/) `.gcs`
+faceting designs from the command line — including dense, high–facet-count
+models (curved supereggs, spheres, freeform solids) that the interactive tool
+can't load.
+
+**[⬇ Download FacetFroster for Windows](https://github.com/loydb/FacetFroster/releases/latest/download/FacetFroster-windows-exe.zip)**
+— self-contained, no Java to install. Extract the zip and run
+`FacetFroster\FacetFroster.exe`. (Have a JDK? The tiny
+[`FacetFroster.jar`](https://github.com/loydb/FacetFroster/releases/latest) runs
+the same.)
 
 ![Before/after: a smooth 1442-facet superegg vs. the same design with every facet edge frosted](docs/superegg_before_after.png)
 
----
+*A 1442-facet "superegg quartz" before and after — every facet edge frosted, the
+frosted bands written as proper Gem Cut Studio tiers.*
+
+## About Gem Cut Studio
+
+[**Gem Cut Studio**](https://gemcutstudio.com/), by **Rej Poirier**, is design
+software for faceted gemstones — *"gem design, in real-time"*, in its own words.
+You work in the terms a faceter actually cuts to — tiers, angles, index gear —
+and see the finished stone rendered as you go, so a design can be judged on
+screen before anything is ground against a lap. Its designs are the `.gcs` files
+FacetFroster reads and writes.
+
+**Frosting** is a finish where a facet is left matte/textured instead of
+polished, so it scatters light rather than reflecting it. Gem Cut Studio can
+frost whole facets; *edge* frosting — a thin frosted band along every facet
+boundary, leaving polished centres — is what Sean O'Neil's tool (below) adds,
+and what FacetFroster drives at scale.
+
+FacetFroster is an independent tool. It is not affiliated with Gem Cut Studio;
+it reads and writes that program's `.gcs` format.
 
 ## Credit — Sean O'Neil's Edge Frosting Tool
 
@@ -16,36 +42,27 @@ long runs, and a corrected `.gcs` exporter, and it runs with no GUI.
 work of Sean O'Neil, author of the _Edge Frosting Tool_.** The frosting
 algorithm, the gem/facet/plane geometry kernel, and every bevel this program
 produces come from his tool — FacetFroster only adds command-line
-orchestration, I/O, and packaging around it.
-
-Specifically, FacetFroster calls into Sean O'Neil's classes for 100% of the
-geometry:
-
-- `lap.model.Gem.cutFrostedEdges(...)` — the frosting algorithm itself
-- `lap.model.Gem.getEdgeParameters(...)` — per-edge bevel parameters
-- `lap.model.Gem.cut(...)` — the geometry cut that carves each bevel
-- `lap.model.Gem.getEdgesFromFacets()`, `Facet`, `Edge`, `Cut`, `Tier`,
-  `lap.math.Plane`, `lap.math.Point3D`, `lap.math.ProgressValue`
+orchestration, I/O, and packaging around it. It calls into his classes for 100%
+of the geometry (`lap.model.Gem.cutFrostedEdges` / `getEdgeParameters` / `cut` /
+`getEdgesFromFacets`, `Facet`, `Edge`, `Cut`, `Tier`, `lap.math.Plane`,
+`Point3D`, `ProgressValue`).
 
 Please credit **Sean O'Neil's Edge Frosting Tool** in any use of FacetFroster.
-
-**Get Sean's Edge Frosting Tool** (his official release, a runnable jar that also
-includes his scaled-PDF feature):
+His official release (a runnable jar that also includes his scaled-PDF feature):
 <https://www.mediafire.com/file/ood63rjcv8ixorv/edge-frosting-tool-plus-scaled-pdf-v7.jar/file>
 
-> **The Edge Frosting Tool itself is NOT redistributed in this repository.**
-> Download it from Sean (link above) and build FacetFroster against it (see
-> [Building](#building)). See [Licensing](#licensing) below.
-
----
+The prebuilt binaries on the [releases page](https://github.com/loydb/FacetFroster/releases/latest)
+embed his tool and are published **with his permission**. His tool is **not**
+in this source repository — to build from source you download it yourself (see
+[Building](#building)).
 
 ## Why this exists
 
-Sean's Edge Frosting Tool is a Swing desktop application whose `.gcs` importer
-reconstructs a gem by **replaying each tier as a cut** from a starting blank.
-That works for typical hand-cut faceting designs, but it collapses on dense,
-curved models: a 60-fold "superegg" with 1442 explicit facets reconstructs to
-~38 facets and then crashes.
+Gem Cut Studio and Sean's tool both reconstruct a gem by **replaying each tier
+as a cut** from a starting blank when they load a `.gcs`. That works for typical
+hand-cut faceting designs, but it collapses on dense, curved models: a 60-fold
+"superegg" with 1442 explicit facets reconstructs to ~38 facets and then
+crashes.
 
 FacetFroster bypasses the lossy importer: it parses the `.gcs` facets
 **verbatim** into Sean's `Gem` model, lets his `getEdgesFromFacets()` build a
@@ -55,10 +72,9 @@ also:
 - **auto-tunes** the vertex-weld tolerance to the smallest value that yields a
   closed manifold,
 - shows a **live console progress bar** (polls Sean's `ProgressValue`),
-- writes a **corrected exporter** — frosted bevels are distributed into proper
-  per-angle/depth tiers (each an independent GemCutStudio cut with a sane gear
-  index list) rather than lumped into a single tier that GemCutStudio
-  mis-reads,
+- writes a **corrected exporter** — frosted bevels go into proper per-angle/depth
+  tiers (each an independent Gem Cut Studio cut with a sane gear index list)
+  rather than lumped into one tier that Gem Cut Studio mis-reads,
 - supports **checkpointing** (`FacetFrosterCkpt`) for very long runs — a rolling
   window of `.gcs` snapshots every N%,
 - routes the tool's modal warning dialogs to the console so it never blocks a
@@ -67,9 +83,9 @@ also:
 ## Building
 
 Requires a JDK (developed against JDK 25 — needs `javac`, `jar`, and, for the
-exe, `jpackage`) and Sean O'Neil's Edge Frosting Tool jar (download link in the
-[credit section](#credit--sean-oneils-edge-frosting-tool)). Point the build at
-his jar (an already-extracted folder works too):
+exe, `jpackage`) and Sean O'Neil's Edge Frosting Tool jar (download link
+[above](#credit--sean-oneils-edge-frosting-tool)). Point the build at his jar
+(an already-extracted folder works too):
 
 ```powershell
 # from the repo root — builds out\FacetFroster.jar (+ a self-contained exe zip):
@@ -86,17 +102,11 @@ javac -cp "<tool>" -d build src\Messages.java
 javac -cp "build;<tool>" -d build src\FacetFroster.java src\FacetFrosterCkpt.java
 ```
 
-The built jar/exe **embed Sean's classes** — only distribute them if his license
-permits it (see [Licensing](#licensing)).
-
 ## Usage
 
 ```
-java -jar out\FacetFroster.jar <input.gcs> [width | N%] [-o out.gcs]
+FacetFroster.exe <input.gcs> [width | N%] [-o out.gcs]      # or: java -jar FacetFroster.jar ...
 ```
-
-(or run `FacetFroster\FacetFroster.exe` from the extracted self-contained zip —
-no Java needed).
 
 - Output defaults to `<input dir>\<name>_frosted.gcs`.
 - `width`: a bare number = model units; `N%` = percent of model width (default 1%).
@@ -114,11 +124,11 @@ java -cp out\FacetFroster.jar FacetFrosterCkpt <in.gcs> <out.gcs> <width|N%> <ck
 
 ## Licensing
 
-- **FacetFroster's own code** (`src/`, `scripts/`) — see [LICENSE](LICENSE).
-- **Sean O'Neil's Edge Frosting Tool** — his own work, under his own terms, and
-  **not included here**. Obtain it from Sean and comply with his license.
-  Redistributing a built jar/exe that embeds his classes requires his
-  permission.
+- **FacetFroster's own code** (`src/`, `scripts/`) — see [LICENSE](LICENSE) (MIT).
+- **Sean O'Neil's Edge Frosting Tool** — his own work, under his own terms; not
+  included in this source repo. The release binaries embed it with his permission.
+- **Gem Cut Studio** — Rej Poirier's software; FacetFroster only reads/writes its
+  `.gcs` file format and is not affiliated with it.
 
 ## Files
 
@@ -127,5 +137,5 @@ java -cp out\FacetFroster.jar FacetFrosterCkpt <in.gcs> <out.gcs> <width|N%> <ck
 | `src/FacetFroster.java` | one-shot froster: verbatim load + auto-tune + progress bar + corrected exporter |
 | `src/FacetFrosterCkpt.java` | checkpointing froster (rolling-N `.gcs` snapshots) for long runs |
 | `src/Messages.java` | console shadow of the tool's `lap.menu.Messages` (no blocking dialogs) |
-| `scripts/build_exe.ps1` | build + verify `FacetFroster.jar` and a self-contained exe zip (`-Tool <path>`) |
+| `scripts/build_exe.ps1` | build + verify `FacetFroster.jar` and a self-contained exe zip (`-Tool <Sean's jar>`) |
 | `scripts/facetfroster_checkpointed.ps1` | parameterized recovery runner (rolling checkpoints + auto-restart on hang) |
