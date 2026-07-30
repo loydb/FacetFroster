@@ -26,8 +26,8 @@ if (-not $OutDir) { $OutDir = Join-Path (Split-Path -Parent $here) "out" }
 
 # Sean distributes his tool as a .jar; also accept an already-extracted folder.
 if ((Test-Path $Tool) -and ($Tool -like '*.jar')) {
-  $toolDir = Join-Path $env:TEMP ("facetfroster_tool_" + [System.Diagnostics.Process]::GetCurrentProcess().Id)
-  Remove-Item $toolDir -Recurse -Force -ErrorAction SilentlyContinue
+  $toolDir = Join-Path $env:TEMP ("facetfroster_tool_" + [System.Diagnostics.Process]::GetCurrentProcess().Id + "_" + [System.IO.Path]::GetRandomFileName())
+  if (Test-Path $toolDir) { throw "temp dir already exists: $toolDir" }
   Add-Type -AssemblyName System.IO.Compression.FileSystem
   [System.IO.Compression.ZipFile]::ExtractToDirectory((Resolve-Path $Tool).Path, $toolDir)  # a jar is a zip
   $Tool = $toolDir
@@ -40,8 +40,8 @@ New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 # Build classes in a LOCAL temp dir (never a synced/cloud folder: syncing the
 # many intermediate lap\ files mid-build makes `jar cfm lap` package an
 # incomplete lap\ -> NoClassDefFoundError at runtime).
-$build = Join-Path $env:TEMP ("facetfroster_classes_" + [System.Diagnostics.Process]::GetCurrentProcess().Id)
-Remove-Item $build -Recurse -Force -ErrorAction SilentlyContinue
+$build = Join-Path $env:TEMP ("facetfroster_classes_" + [System.Diagnostics.Process]::GetCurrentProcess().Id + "_" + [System.IO.Path]::GetRandomFileName())
+if (Test-Path $build) { throw "temp dir already exists: $build" }
 New-Item -ItemType Directory -Force -Path $build | Out-Null
 $localJar = Join-Path $build "FacetFroster.jar"
 
@@ -76,8 +76,9 @@ if (-not $NoExe) {
   # folder copied into a cloud folder corrupts; one zip syncs cleanly).
   $exeOk = $false
   for ($try = 1; $try -le 4 -and -not $exeOk; $try++) {
-    $tmp = Join-Path $env:TEMP ("facetfroster_build_" + [System.Diagnostics.Process]::GetCurrentProcess().Id + "_" + $try)
-    Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path $tmp | Out-Null
+    $tmp = Join-Path $env:TEMP ("facetfroster_build_" + [System.Diagnostics.Process]::GetCurrentProcess().Id + "_" + $try + "_" + [System.IO.Path]::GetRandomFileName())
+    if (Test-Path $tmp) { throw "temp dir already exists: $tmp" }
+    New-Item -ItemType Directory -Force -Path $tmp | Out-Null
     jpackage --type app-image --input $appin --main-jar FacetFroster.jar --main-class FacetFroster --win-console --name FacetFroster --dest $tmp
     if ($LASTEXITCODE) { Write-Host "jpackage try $try failed"; continue }
     $exePath = Join-Path $tmp "FacetFroster\FacetFroster.exe"

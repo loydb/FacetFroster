@@ -35,6 +35,25 @@ public class FacetFroster {
         return m.find() ? m.group() : "";
     }
 
+    /** Hardened XML parse (XXE-safe): forbids DOCTYPE, external entities, DTDs
+     *  and external schemas. Use in place of the default DocumentBuilder. */
+    static Document parseSecure(File f) throws Exception {
+        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        dbf.setXIncludeAware(false);
+        dbf.setExpandEntityReferences(false);
+        try { dbf.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, ""); } catch (IllegalArgumentException ignore) {}
+        try { dbf.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, ""); } catch (IllegalArgumentException ignore) {}
+        return dbf.newDocumentBuilder().parse(f);
+    }
+
+    /** XML-attribute-escape an input-derived string value (null-safe). Escape
+     *  '&' FIRST so the other replacements are not double-escaped. */
+    static String xmlAttr(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
+
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
             System.err.println("usage: frost <input.gcs> [width|N%] [-o output.gcs]");
@@ -62,7 +81,7 @@ public class FacetFroster {
         PrintStream nul = new PrintStream(OutputStream.nullOutputStream());
 
         System.out.println("Loading " + inFile.getName() + " ...");
-        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(inFile);
+        Document doc = parseSecure(inFile);
 
         // ---- parse raw facets (normal + tier + vertex list) once ----
         List<double[]> fnorm = new ArrayList<>();     // {nx,ny,nz}
@@ -250,7 +269,7 @@ public class FacetFroster {
                                 : dflt(tierDepth.get(name), "1");
             String instr = isFr ? "Frost edges" : orEmpty(tierInstr.get(name));
             sb.append(String.format("\t<tier angle=\"%s\" depth=\"%s\" name=\"%s\" instructions=\"%s\" visible=\"true\" guide=\"false\">%n",
-                    trim(ang), depth, name, instr));
+                    trim(ang), xmlAttr(depth), xmlAttr(name), xmlAttr(instr)));
             for (Facet f : byTier.get(t)) {
                 Point3D<Double> n = f.getPlane().getNormal();
                 double ia = Math.toDegrees(Math.atan2(n.getY(), n.getX()));   // azimuth = gear index angle

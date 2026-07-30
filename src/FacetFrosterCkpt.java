@@ -36,7 +36,7 @@ public class FacetFrosterCkpt {
      *  reference tier maps when isOriginal. */
     static Gem build(String path, double tol, boolean isOriginal) throws Exception {
         Gem.maxError = tol;
-        Document doc = DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new File(path));
+        Document doc = parseSecure(new File(path));
         Gem gem = new Gem();
         NodeList tiers = doc.getElementsByTagName("tier");
         for (int ti=0; ti<tiers.getLength(); ti++){
@@ -70,6 +70,10 @@ public class FacetFrosterCkpt {
     }
 
     public static void main(String[] args) throws Exception {
+        if (args.length < 4) {
+            System.err.println("usage: FacetFrosterCkpt <input.gcs> <output.gcs> <width|N%> <ckptDir> [pct]");
+            System.exit(2);
+        }
         String in=args[0], out=args[1], widthArg=args[2], dir=args[3];
         int pct = args.length>4 ? Integer.parseInt(args[4]) : 10;
         new File(dir).mkdirs();
@@ -109,11 +113,20 @@ public class FacetFrosterCkpt {
             startIdx=0;
             System.out.printf("Model width %.3f, bevel %.4f, %d edges, weld %.0e%n", modelW, thickness, params.size(), tol);
         } else {
-            Object[] pr = loadParams(paramsF); params=(List<double[]>)pr[0]; gear=(int)pr[1]; double ptol=(double)pr[2];
-            startIdx = Integer.parseInt(new String(Files.readAllBytes(progress.toPath())).trim()) + 1;
-            // resume from the exact index-based state (coord-welding a reloaded
-            // .gcs cannot reproduce the thin-bevel topology; index sharing can).
-            System.setOut(nul); g = loadState(new File(dir, "ckpt_"+(startIdx-1)+".state")); System.setOut(real);
+            try {
+                Object[] pr = loadParams(paramsF); params=(List<double[]>)pr[0]; gear=(int)pr[1]; double ptol=(double)pr[2];
+                startIdx = Integer.parseInt(new String(Files.readAllBytes(progress.toPath())).trim()) + 1;
+                if (startIdx < 0 || startIdx > params.size())
+                    throw new IndexOutOfBoundsException("startIdx "+startIdx+" out of range 0.."+params.size());
+                // resume from the exact index-based state (coord-welding a reloaded
+                // .gcs cannot reproduce the thin-bevel topology; index sharing can).
+                System.setOut(nul); g = loadState(new File(dir, "ckpt_"+(startIdx-1)+".state")); System.setOut(real);
+            } catch (NumberFormatException | IndexOutOfBoundsException ex) {
+                System.setOut(real);
+                System.err.println("checkpoint corrupt ("+dir+"): delete it and rerun");
+                System.exit(1);
+                return;
+            }
             System.out.printf("Resumed at edge %d/%d%n", startIdx, params.size());
         }
 
@@ -148,7 +161,7 @@ public class FacetFrosterCkpt {
 
     static double[] bounds(String path) throws Exception {
         double minx=1e18,maxx=-1e18,miny=1e18,maxy=-1e18;
-        Document doc=DocumentBuilderFactory.newInstance().newDocumentBuilder().parse(new File(path));
+        Document doc=parseSecure(new File(path));
         NodeList vs=doc.getElementsByTagName("vertex");
         for(int i=0;i<vs.getLength();i++){Element ve=(Element)vs.item(i);
             double x=Double.parseDouble(ve.getAttribute("x")),y=Double.parseDouble(ve.getAttribute("y"));
@@ -230,7 +243,9 @@ public class FacetFrosterCkpt {
         for(int i=0;i<nf;i++){ String[] t=lines.get(li++).split("\\s+");
             double nx=Double.parseDouble(t[0]),ny=Double.parseDouble(t[1]),nz=Double.parseDouble(t[2]); int k=Integer.parseInt(t[3]);
             Facet fc=new Facet(g); List<Point3D<Double>> pts=new ArrayList<>(); double cn=0;
-            for(int j=0;j<k;j++){ int ix=Integer.parseInt(t[4+j]); Point3D<Double> p=g.points.get(ix); pts.add(p); cn+=nx*p.getX()+ny*p.getY()+nz*p.getZ(); }
+            for(int j=0;j<k;j++){ int ix=Integer.parseInt(t[4+j]);
+                if(ix<0||ix>=g.points.size()) throw new IndexOutOfBoundsException("vertex index "+ix+" of "+g.points.size());
+                Point3D<Double> p=g.points.get(ix); pts.add(p); cn+=nx*p.getX()+ny*p.getY()+nz*p.getZ(); }
             cn/=k; fc.setPlane(new Plane(P(nx,ny,nz),cn)); for(Point3D<Double> p:pts) fc.points.add(p); g.facets.add(fc); }
         g.getEdgesFromFacets();
         return g;
@@ -243,6 +258,25 @@ public class FacetFrosterCkpt {
         return new java.math.BigDecimal(a).setScale(4,java.math.RoundingMode.HALF_UP).stripTrailingZeros().toPlainString(); }
     static String dflt(String s,String d){ return (s==null||s.isEmpty())?d:s; }
     static String orEmpty(String s){ return s==null?"":s; }
+
+    /** Hardened XML parse (XXE-safe): forbids DOCTYPE, external entities, DTDs
+     *  and external schemas. Use in place of the default DocumentBuilder. */
+    static Document parseSecure(File f) throws Exception {
+        DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+        dbf.setFeature("http://apache.org/xml/features/disallow-doctype-decl", true);
+        dbf.setXIncludeAware(false);
+        dbf.setExpandEntityReferences(false);
+        try { dbf.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_DTD, ""); } catch (IllegalArgumentException ignore) {}
+        try { dbf.setAttribute(javax.xml.XMLConstants.ACCESS_EXTERNAL_SCHEMA, ""); } catch (IllegalArgumentException ignore) {}
+        return dbf.newDocumentBuilder().parse(f);
+    }
+
+    /** XML-attribute-escape an input-derived string value (null-safe). Escape
+     *  '&' FIRST so the other replacements are not double-escaped. */
+    static String xmlAttr(String s) {
+        if (s == null) return "";
+        return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("\"", "&quot;");
+    }
 
     static void writeFinal(Gem g, String origPath, String out) throws Exception {
         String otext=new String(Files.readAllBytes(new File(origPath).toPath()),"UTF-8");
@@ -271,7 +305,7 @@ public class FacetFrosterCkpt {
             double ang=bAng.getOrDefault(t,0.0); String name=bName.getOrDefault(t,"FR");
             String depth=isFr?trim(bDep.getOrDefault(t,1.0)):dflt(tierDepth.get(name),"1");
             String instr=isFr?"Frost edges":orEmpty(tierInstr.get(name));
-            sb.append("\t<tier angle=\""+trim(ang)+"\" depth=\""+depth+"\" name=\""+name+"\" instructions=\""+instr+"\" visible=\"true\" guide=\"false\">\n");
+            sb.append("\t<tier angle=\""+trim(ang)+"\" depth=\""+xmlAttr(depth)+"\" name=\""+xmlAttr(name)+"\" instructions=\""+xmlAttr(instr)+"\" visible=\"true\" guide=\"false\">\n");
             for(Facet f:byTier.get(t)){ Point3D<Double> n=f.getPlane().getNormal();
                 double ia=Math.toDegrees(Math.atan2(n.getY(),n.getX()));
                 sb.append("\t\t<facet nx=\""+n.getX()+"\" ny=\""+n.getY()+"\" nz=\""+n.getZ()+"\" index_angle=\""+trim(ia)+"\""+(isFr?" frosting=\"0.5\"":"")+">\n");
