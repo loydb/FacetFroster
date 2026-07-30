@@ -10,8 +10,10 @@ can't load.
 ### Download & run
 
 - **Windows —** **[⬇ FacetFroster for Windows](https://github.com/loydb/FacetFroster/releases/latest/download/FacetFroster-windows-exe.zip)**
-  (self-contained, **no Java to install**). Extract the zip, then run
-  `FacetFroster\FacetFroster.exe your-design.gcs` from a command prompt.
+  (self-contained, **no Java to install**). Extract the zip, then just **drag a
+  `.gcs` file onto `FacetFroster.exe`** — it writes `your-design_frosted.gcs` right
+  beside it. Or, for options (frost width, output path), run it from a command
+  prompt: `FacetFroster\FacetFroster.exe your-design.gcs`.
 - **macOS / Linux —** **[⬇ FacetFroster.jar](https://github.com/loydb/FacetFroster/releases/latest/download/FacetFroster.jar)**
   (needs a [Java 25+](https://adoptium.net/) runtime). Run
   `java -jar FacetFroster.jar your-design.gcs`. The same jar also works on Windows.
