@@ -33,18 +33,30 @@ $render = [System.IO.Path]::ChangeExtension($OutputGcs, ".png")
 $log    = Join-Path $here "run.log"
 function Log($m){ "$((Get-Date).ToString('HH:mm:ss'))  $m" | Tee-Object -FilePath $log -Append | Out-Null }
 
+# Kill ONLY the worker we launched and its child process tree (java may be a
+# wrapper shim that spawns the real JVM as a child PID), never every java on the
+# box.
+function Stop-ProcTree($proc){
+  if (-not $proc) { return }
+  $id = $proc.Id
+  Get-CimInstance Win32_Process -Filter "ParentProcessId=$id" -EA SilentlyContinue |
+    ForEach-Object { Stop-Process -Id $_.ProcessId -Force -EA SilentlyContinue }
+  Stop-Process -Id $id -Force -EA SilentlyContinue
+}
+
 if (-not (Test-Path $Jar)) {
   Log "ERROR: FacetFroster.jar not found at '$Jar'. Run build_exe.ps1 first."; exit 1
 }
 
 $success = $false
+$proc = $null
 for ($attempt = 1; $attempt -le 6 -and -not $success; $attempt++) {
-  Get-Process java -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue   # clear any zombies
+  Stop-ProcTree $proc   # clear the previous attempt's worker (if any), PID-scoped
   Remove-Item $cd -Recurse -Force -EA SilentlyContinue; New-Item -ItemType Directory -Force $cd | Out-Null
   Remove-Item $OutputGcs -EA SilentlyContinue
   Log "attempt ${attempt}: launching FacetFrosterCkpt"
-  Start-Process -FilePath "java" -ArgumentList @("-cp","$Jar","FacetFrosterCkpt",$InputGcs,$OutputGcs,$Width,$cd,"10") `
-    -RedirectStandardOutput (Join-Path $here "run_ck.log") -RedirectStandardError (Join-Path $here "run_ck.err") -WindowStyle Hidden | Out-Null
+  $proc = Start-Process -FilePath "java" -ArgumentList @("-cp","$Jar","FacetFrosterCkpt",$InputGcs,$OutputGcs,$Width,$cd,"10") `
+    -RedirectStandardOutput (Join-Path $here "run_ck.log") -RedirectStandardError (Join-Path $here "run_ck.err") -WindowStyle Hidden -PassThru
 
   $lastProg = -1; $lastAdvance = Get-Date
   while ($true) {
@@ -53,12 +65,15 @@ for ($attempt = 1; $attempt -le 6 -and -not $success; $attempt++) {
       Start-Sleep -Seconds 4                                   # let it flush
       Log "attempt ${attempt}: final written"; $success = $true; break
     }
-    $worker = Get-Process java -EA SilentlyContinue | Where-Object { $_.WorkingSet64 -gt 300MB }
+    # is OUR worker still alive? match by class on the command line so a java
+    # wrapper shim spawning the real JVM under a different PID is still seen.
+    $worker = Get-CimInstance Win32_Process -Filter "Name='java.exe'" -EA SilentlyContinue |
+              Where-Object { $_.CommandLine -like '*FacetFrosterCkpt*' }
     $prog = -1; if (Test-Path (Join-Path $cd "progress.txt")) { $prog = [int](Get-Content (Join-Path $cd "progress.txt") -Raw).Trim() }
     if ($prog -gt $lastProg) { $lastProg = $prog; $lastAdvance = Get-Date }
     if (-not $worker -and -not (Test-Path $OutputGcs)) { Log "attempt ${attempt}: worker gone, no output -> retry"; break }
     $idle = ((Get-Date) - $lastAdvance).TotalSeconds
-    if ($idle -ge $StallLimit) { Log "attempt ${attempt}: no progress ${idle}s (hung) -> kill+retry"; Get-Process java -EA SilentlyContinue | Stop-Process -Force -EA SilentlyContinue; break }
+    if ($idle -ge $StallLimit) { Log "attempt ${attempt}: no progress ${idle}s (hung) -> kill+retry"; Stop-ProcTree $proc; break }
   }
 }
 if ($success) {
