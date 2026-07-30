@@ -7,11 +7,18 @@ faceting designs from the command line — including dense, high–facet-count
 models (curved supereggs, spheres, freeform solids) that the interactive tool
 can't load.
 
-**[⬇ Download FacetFroster for Windows](https://github.com/loydb/FacetFroster/releases/latest/download/FacetFroster-windows-exe.zip)**
-— self-contained, no Java to install. Extract the zip and run
-`FacetFroster\FacetFroster.exe`. (Have a JDK? The tiny
-[`FacetFroster.jar`](https://github.com/loydb/FacetFroster/releases/latest) runs
-the same.)
+### Download & run
+
+- **Windows —** **[⬇ FacetFroster for Windows](https://github.com/loydb/FacetFroster/releases/latest/download/FacetFroster-windows-exe.zip)**
+  (self-contained, **no Java to install**). Extract the zip, then run
+  `FacetFroster\FacetFroster.exe your-design.gcs` from a command prompt.
+- **macOS / Linux —** **[⬇ FacetFroster.jar](https://github.com/loydb/FacetFroster/releases/latest/download/FacetFroster.jar)**
+  (needs a [Java 25+](https://adoptium.net/) runtime). Run
+  `java -jar FacetFroster.jar your-design.gcs`. The same jar also works on Windows.
+
+That's it — the downloads are ready to use. You only need the
+[build-from-source](#building-from-source) section if you want to modify or
+rebuild FacetFroster yourself.
 
 ![Before/after: a smooth 1442-facet superegg vs. the same design with every facet edge frosted](docs/superegg_before_after.png)
 
@@ -89,10 +96,14 @@ also:
 - routes the tool's modal warning dialogs to the console so it never blocks a
   headless run (`Messages` shadow).
 
-## Building
+## Building from source
 
-Requires a JDK (developed against JDK 25 — needs `javac`, `jar`, and, for the
-exe, `jpackage`) and Sean O'Neil's Edge Frosting Tool jar (download link
+**Most people don't need this** — the [downloads above](#download--run) are ready
+to run on Windows, macOS, and Linux. Build from source only if you want to modify
+FacetFroster or rebuild the Windows exe yourself.
+
+You'll need a JDK (developed against JDK 25 — `javac`, `jar`, and, for the exe,
+`jpackage`) and Sean O'Neil's Edge Frosting Tool jar (download link
 [above](#credit--sean-oneils-edge-frosting-tool)). Point the build at his jar
 (an already-extracted folder works too):
 
