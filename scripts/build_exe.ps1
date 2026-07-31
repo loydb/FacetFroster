@@ -49,9 +49,12 @@ $localJar = Join-Path $build "FacetFroster.jar"
 # modal Swing dialogs go to the console and never block a headless run), then
 # our frosters against it.
 Copy-Item (Join-Path $Tool "lap") -Destination (Join-Path $build "lap") -Recurse
-javac -d $build (Join-Path $src "Messages.java");                          if ($LASTEXITCODE) { throw "Messages javac failed" }
-javac -cp "$build;$Tool" (Join-Path $src "FacetFroster.java")     -d $build;   if ($LASTEXITCODE) { throw "FacetFroster javac failed" }
-javac -cp "$build;$Tool" (Join-Path $src "FacetFrosterCkpt.java") -d $build 2>$null; if ($LASTEXITCODE) { throw "FacetFrosterCkpt javac failed" }
+# Target Java 17 (current LTS) so the jar runs on any modern runtime, not just
+# JDK 25. Sean's classes are Java 8, so 17 is comfortably above the floor.
+$rel = '17'
+javac --release $rel -d $build (Join-Path $src "Messages.java");                          if ($LASTEXITCODE) { throw "Messages javac failed" }
+javac --release $rel -cp "$build;$Tool" (Join-Path $src "FacetFroster.java")     -d $build;   if ($LASTEXITCODE) { throw "FacetFroster javac failed" }
+javac --release $rel -cp "$build;$Tool" (Join-Path $src "FacetFrosterCkpt.java") -d $build 2>$null; if ($LASTEXITCODE) { throw "FacetFrosterCkpt javac failed" }
 
 "Main-Class: FacetFroster`n" | Set-Content (Join-Path $build "manifest.txt") -NoNewline
 Push-Location $build

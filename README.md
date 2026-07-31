@@ -15,7 +15,8 @@ can't load.
   beside it. Or, for options (frost width, output path), run it from a command
   prompt: `FacetFroster\FacetFroster.exe your-design.gcs`.
 - **macOS / Linux —** **[⬇ FacetFroster.jar](https://github.com/loydb/FacetFroster/releases/latest/download/FacetFroster.jar)**
-  (needs a [Java 25+](https://adoptium.net/) runtime). Run
+  (needs a [Java 17+](https://adoptium.net/) runtime — `java -version` to check;
+  `brew install openjdk@17` on a Mac). Run
   `java -jar FacetFroster.jar your-design.gcs`. The same jar also works on Windows.
 
 That's it — the downloads are ready to use. You only need the
@@ -104,8 +105,9 @@ also:
 to run on Windows, macOS, and Linux. Build from source only if you want to modify
 FacetFroster or rebuild the Windows exe yourself.
 
-You'll need a JDK (developed against JDK 25 — `javac`, `jar`, and, for the exe,
-`jpackage`) and Sean O'Neil's Edge Frosting Tool jar (download link
+You'll need a JDK 17 or newer (`javac`, `jar`, and, for the exe, `jpackage`; the
+compiled jar itself runs on any Java 17+) and Sean O'Neil's Edge Frosting Tool
+jar (download link
 [above](#credit--sean-oneils-edge-frosting-tool)). Point the build at his jar
 (an already-extracted folder works too):
 
