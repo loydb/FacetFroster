@@ -38,6 +38,15 @@ public class FacetFrosterCkpt {
         Gem.maxError = tol;
         Document doc = parseSecure(new File(path));
         Gem gem = new Gem();
+        // carry the design's index gear so whole-index rounding snaps to real
+        // cut positions (not the tool's default 96)
+        NodeList idxN = doc.getElementsByTagName("index");
+        if (idxN.getLength() > 0) {
+            try { lap.io.GCSMetadata md = new lap.io.GCSMetadata();
+                  md.gear = Integer.parseInt(((Element) idxN.item(0)).getAttribute("gear"));
+                  gem.setMetadata(md); }
+            catch (NumberFormatException e) { }
+        }
         NodeList tiers = doc.getElementsByTagName("tier");
         for (int ti=0; ti<tiers.getLength(); ti++){
             Element te=(Element)tiers.item(ti);
@@ -70,12 +79,19 @@ public class FacetFrosterCkpt {
     }
 
     public static void main(String[] args) throws Exception {
-        if (args.length < 4) {
-            System.err.println("usage: FacetFrosterCkpt <input.gcs> <output.gcs> <width|N%> <ckptDir> [pct]");
+        // whole gear indices by default (cuttable); --fractional allows fractional
+        boolean roundIndices = true;
+        java.util.List<String> pos = new java.util.ArrayList<>();
+        for (String a : args) {
+            if (a.equals("--fractional") || a.equals("-f")) roundIndices = false;
+            else pos.add(a);
+        }
+        if (pos.size() < 4) {
+            System.err.println("usage: FacetFrosterCkpt <input.gcs> <output.gcs> <width|N%> <ckptDir> [pct] [--fractional]");
             System.exit(2);
         }
-        String in=args[0], out=args[1], widthArg=args[2], dir=args[3];
-        int pct = args.length>4 ? Integer.parseInt(args[4]) : 10;
+        String in=pos.get(0), out=pos.get(1), widthArg=pos.get(2), dir=pos.get(3);
+        int pct = pos.size()>4 ? Integer.parseInt(pos.get(4)) : 10;
         new File(dir).mkdirs();
         PrintStream real=System.out; PrintStream nul=new PrintStream(OutputStream.nullOutputStream());
 
@@ -106,7 +122,7 @@ public class FacetFrosterCkpt {
             gear = g.getMetadata()!=null ? g.getMetadata().gear : 96;
             System.setOut(nul);
             params = new ArrayList<>();
-            for(Edge e:g.edges){ Double[] p=g.getEdgeParameters(e, thickness, false, gear);
+            for(Edge e:g.edges){ Double[] p=g.getEdgeParameters(e, thickness, roundIndices, gear);
                 params.add(new double[]{p[0],p[1],p[2],p[3],p[4],p[5]}); }
             System.setOut(real);
             saveParams(paramsF, params, gear, tol);

@@ -56,13 +56,19 @@ public class FacetFroster {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("usage: frost <input.gcs> [width|N%] [-o output.gcs]");
+            System.err.println("usage: frost <input.gcs> [width|N%] [-o output.gcs] [--fractional]");
+            System.err.println("  --fractional   allow fractional cutting indices (default: snap to whole gear indices)");
             System.exit(2);
         }
         String in = null, out = null, widthArg = null;
+        // By default, snap frosted facets to whole gear index positions so they
+        // are actually cuttable (a facet at index 11.5 is hard to set on the
+        // machine). --fractional turns snapping off for maximum edge coverage.
+        boolean roundIndices = true;
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             if (a.equals("-o") || a.equals("--out")) { out = args[++i]; }
+            else if (a.equals("--fractional") || a.equals("-f")) { roundIndices = false; }
             else if (in == null) in = a;
             else if (widthArg == null) widthArg = a;
         }
@@ -156,6 +162,18 @@ public class FacetFroster {
             System.exit(1);
         }
 
+        // Use the design's own index gear so whole-index rounding snaps to
+        // positions the design is actually cut on (not the tool's default 96).
+        int designGear = 96;
+        NodeList idxN = doc.getElementsByTagName("index");
+        if (idxN.getLength() > 0) {
+            try { designGear = Integer.parseInt(((Element) idxN.item(0)).getAttribute("gear")); }
+            catch (NumberFormatException e) { }
+        }
+        lap.io.GCSMetadata md = new lap.io.GCSMetadata();
+        md.gear = designGear;
+        gem.setMetadata(md);
+
         double modelW = Math.max(maxx - minx, maxy - miny);
         double thickness;
         if (widthArg == null) thickness = 0.01 * modelW;
@@ -164,6 +182,9 @@ public class FacetFroster {
         else thickness = Double.parseDouble(widthArg.trim());
         System.out.printf("Model: %d facets, %d edges, width %.3f  ->  bevel width %.4f%n",
                 gem.facets.size(), gem.edges.size(), modelW, thickness);
+        System.out.println(roundIndices
+                ? "Index mode: whole indices on the design's " + designGear + " gear (cuttable). Use --fractional to allow fractional indices."
+                : "Index mode: fractional indices allowed.");
 
         final ProgressValue pv = new ProgressValue();
         final boolean[] done = {false};
@@ -185,7 +206,7 @@ public class FacetFroster {
         System.setOut(nul);
         Gem g;
         try {
-            g = gem.cutFrostedEdges(true, true, true, thickness, false, pv);
+            g = gem.cutFrostedEdges(true, true, true, thickness, roundIndices, pv);
             g.update();
         } catch (Throwable t) {
             done[0] = true;
