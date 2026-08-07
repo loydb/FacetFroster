@@ -28,6 +28,28 @@ public class FacetFroster {
         Point3D<Double> v0 = f.points.get(0);
         return key(nx, ny, nz, nx * v0.getX() + ny * v0.getY() + nz * v0.getZ());
     }
+
+    static String key4(double nx, double ny, double nz, double cn) {
+        return String.format("%.4f_%.4f_%.4f_%.4f", nx, ny, nz, cn);
+    }
+    /** check key: facet's getNormal + first-vertex plane distance (matched against
+     *  the original-plane set built in buildGem with the same 1e-4 rounding). */
+    static String checkKey4(Facet f) {
+        Point3D<Double> n = f.getPlane().getNormal();
+        double nx = n.getX(), ny = n.getY(), nz = n.getZ();
+        Point3D<Double> v0 = f.points.get(0);
+        return key4(nx, ny, nz, nx * v0.getX() + ny * v0.getY() + nz * v0.getZ());
+    }
+    /** how many distinct original planes still have a surviving facet */
+    static int survOrig(Gem g, java.util.Set<String> orig) {
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (Facet f : g.facets) {
+            if (f.points.size() < 3) continue;
+            String k = checkKey4(f);
+            if (orig.contains(k)) seen.add(k);
+        }
+        return seen.size();
+    }
     static String block(String text, String tag) {
         Matcher m = Pattern.compile("<" + tag + "\\b[^>]*/>").matcher(text);
         if (m.find()) return m.group();
@@ -56,8 +78,9 @@ public class FacetFroster {
 
     public static void main(String[] args) throws Exception {
         if (args.length < 1) {
-            System.err.println("usage: frost <input.gcs> [width|N%] [-o output.gcs] [--fractional]");
+            System.err.println("usage: frost <input.gcs> [width|N%] [-o output.gcs] [--fractional] [--girdle]");
             System.err.println("  --fractional   allow fractional cutting indices (default: snap to whole gear indices)");
+            System.err.println("  --girdle       also frost girdle-adjacent edges (default: girdle left unfrosted)");
             System.exit(2);
         }
         String in = null, out = null, widthArg = null;
@@ -65,10 +88,16 @@ public class FacetFroster {
         // are actually cuttable (a facet at index 11.5 is hard to set on the
         // machine). --fractional turns snapping off for maximum edge coverage.
         boolean roundIndices = true;
+        // Girdle edges are excluded by default (the girdle is normally left
+        // unfrosted, and a bevel pivoting off a short vertical girdle facet
+        // consumes it at any width -- same reason Sean's tool puts girdle
+        // frosting behind its own checkbox). --girdle opts in.
+        boolean frostGirdle = false;
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             if (a.equals("-o") || a.equals("--out")) { out = args[++i]; }
             else if (a.equals("--fractional") || a.equals("-f")) { roundIndices = false; }
+            else if (a.equals("--girdle") || a.equals("-g")) { frostGirdle = true; }
             else if (in == null) in = a;
             else if (widthArg == null) widthArg = a;
         }
@@ -135,21 +164,23 @@ public class FacetFroster {
         double[] cands = {1e-6, 3e-6, 1e-5, 3e-5, 1e-4, 3e-4, 1e-3};
         Gem gem = null;
         Map<String, String> planeTier = null;
+        java.util.Set<String> origKeys = null;
         double chosenTol = cands[cands.length - 1];
         int bestBad = Integer.MAX_VALUE;
-        Gem bestGem = null; Map<String, String> bestTier = null; double bestTol = chosenTol;
+        Gem bestGem = null; Map<String, String> bestTier = null; java.util.Set<String> bestOrig = null; double bestTol = chosenTol;
         System.setOut(nul);
         for (double tol : cands) {
             Object[] r = buildGem(fnorm, ftier, fverts, tol);
             Gem gg = (Gem) r[0];
             @SuppressWarnings("unchecked") Map<String, String> pt = (Map<String, String>) r[1];
+            @SuppressWarnings("unchecked") java.util.Set<String> ok = (java.util.Set<String>) r[2];
             int bad = 0;
             for (Edge e : gg.edges) if (e.facets.size() != 2) bad++;
-            if (bad < bestBad) { bestBad = bad; bestGem = gg; bestTier = pt; bestTol = tol; }
-            if (bad == 0) { gem = gg; planeTier = pt; chosenTol = tol; break; }
+            if (bad < bestBad) { bestBad = bad; bestGem = gg; bestTier = pt; bestOrig = ok; bestTol = tol; }
+            if (bad == 0) { gem = gg; planeTier = pt; origKeys = ok; chosenTol = tol; break; }
         }
         int nonManifold = 0;
-        if (gem == null) { gem = bestGem; planeTier = bestTier; chosenTol = bestTol; nonManifold = bestBad; }
+        if (gem == null) { gem = bestGem; planeTier = bestTier; origKeys = bestOrig; chosenTol = bestTol; nonManifold = bestBad; }
         Gem.maxError = chosenTol;
         System.setOut(real);
         System.out.printf("Weld tolerance %.0e -> %d edges, %d non-manifold%n",
@@ -164,15 +195,15 @@ public class FacetFroster {
 
         // Use the design's own index gear so whole-index rounding snaps to
         // positions the design is actually cut on (not the tool's default 96).
+        // Passed explicitly to getEdgeParameters/cut below -- we deliberately do
+        // NOT call gem.setMetadata(): a metadata object with zeroed base/symmetry/
+        // mirror corrupts the frosting geometry (over-consumes facets).
         int designGear = 96;
         NodeList idxN = doc.getElementsByTagName("index");
         if (idxN.getLength() > 0) {
             try { designGear = Integer.parseInt(((Element) idxN.item(0)).getAttribute("gear")); }
             catch (NumberFormatException e) { }
         }
-        lap.io.GCSMetadata md = new lap.io.GCSMetadata();
-        md.gear = designGear;
-        gem.setMetadata(md);
 
         double modelW = Math.max(maxx - minx, maxy - miny);
         double thickness;
@@ -205,8 +236,106 @@ public class FacetFroster {
         lap.menu.Messages.lastMessage = null;
         System.setOut(nul);
         Gem g;
+        int skippedEdges = 0, narrowedEdges = 0, girdleEdges = 0, tiltedEdges = 0;
         try {
-            g = gem.cutFrostedEdges(true, true, true, thickness, roundIndices, pv);
+            // Drive the frosting edge-by-edge (validated identical to the tool's
+            // own cutFrostedEdges) so we can SKIP any bevel that would obliterate
+            // an original facet -- on some designs a full-width edge cut consumes
+            // a whole small/shallow facet, leaving a hole. We cut on a copy, keep
+            // it only if every original facet survives, else leave that edge
+            // unfrosted.
+            // Per-edge bevel parameters at several widths, all computed upfront
+            // from the original topology (the tool's own two-phase approach).
+            // When the full-width bevel would consume a whole facet, retry that
+            // edge at 1/2, 1/4, 1/8, 1/16 width: a narrower frost band beats a
+            // hole OR an unfrosted edge. Only a degenerate edge (even a sliver
+            // band consumes the facet) is left unfrosted.
+            final double[] LEVELS = {1.0, 0.5, 0.25, 0.125, 0.0625};
+            java.util.List<java.util.List<double[]>> paramsL = new java.util.ArrayList<>();
+            for (double lv : LEVELS) {
+                java.util.List<double[]> ps = new java.util.ArrayList<>();
+                for (Edge e : gem.edges) {
+                    Double[] p = gem.getEdgeParameters(e, thickness * lv, roundIndices, designGear);
+                    ps.add(new double[]{p[0], p[1], p[2], p[3], p[4], p[5]});
+                }
+                paramsL.add(ps);
+            }
+            // girdle exclusion uses Sean's own isGirdle() predicate, per edge
+            boolean[] girdleEdge = new boolean[gem.edges.size()];
+            for (int i = 0; i < gem.edges.size(); i++) {
+                Edge e = gem.edges.get(i);
+                girdleEdge[i] = e.facets.get(0).isGirdle() || e.facets.get(1).isGirdle();
+            }
+            // pre-compute per-edge data for the tilt-bias fallback (see below)
+            int nE = gem.edges.size();
+            double[][] edgeNa = new double[nE][], edgeNb = new double[nE][], edgeMid = new double[nE][];
+            for (int i = 0; i < nE; i++) {
+                Edge e = gem.edges.get(i);
+                Point3D<Double> na = e.facets.get(0).getPlane().getNormal();
+                Point3D<Double> nb = e.facets.get(1).getPlane().getNormal();
+                edgeNa[i] = new double[]{na.getX(), na.getY(), na.getZ()};
+                edgeNb[i] = new double[]{nb.getX(), nb.getY(), nb.getZ()};
+                edgeMid[i] = new double[]{
+                    (e.getPoint1().getX() + e.getPoint2().getX()) / 2,
+                    (e.getPoint1().getY() + e.getPoint2().getY()) / 2,
+                    (e.getPoint1().getZ() + e.getPoint2().getZ()) / 2};
+            }
+            g = gem;
+            int have = survOrig(g, origKeys);
+            int N = nE;
+            for (int i = 0; i < N; i++) {
+                if (!frostGirdle && girdleEdge[i]) { girdleEdges++; continue; }
+                boolean cutOk = false;
+                // 1) Sean's mitered bevel plane, narrowing the band if needed
+                for (int L = 0; L < LEVELS.length && !cutOk; L++) {
+                    double[] p = paramsL.get(L).get(i);
+                    Plane plane = new Plane(P(p[3], p[4], p[5]), p[2]);
+                    Gem snap = new Gem(g);
+                    g = g.cut(designGear, p[2], p[0] * 180.0 / Math.PI, p[1] * designGear / (2 * Math.PI), plane, 1, false);
+                    g.update();
+                    int now = survOrig(g, origKeys);
+                    if (now < have) { g = snap; }               // still eats a facet -> try narrower
+                    else { have = now; cutOk = true; if (L > 0) narrowedEdges++; }
+                }
+                // 2) tilt-bias fallback: a near-horizontal miter plane (shallow
+                //    crown/table edges) extends across the stone and clips the far
+                //    girdle at ANY width. Rotating the bevel plane toward the
+                //    steeper facet keeps it clear of the far side while still
+                //    laying a frost band on the edge (asymmetric: wider on the
+                //    shallow facet).
+                if (!cutOk) {
+                    double[] a = edgeNa[i], b = edgeNb[i], m = edgeMid[i];
+                    double[] sh = Math.abs(a[2]) >= Math.abs(b[2]) ? a : b;   // shallower (normal closer to +-z)
+                    double[] st = (sh == a) ? b : a;                          // steeper
+                    outer:
+                    for (double t : new double[]{0.75, 0.9}) {
+                        for (double lv : new double[]{1.0, 0.5, 0.25}) {
+                            double nx = (1 - t) * sh[0] + t * st[0];
+                            double ny = (1 - t) * sh[1] + t * st[1];
+                            double nz = (1 - t) * sh[2] + t * st[2];
+                            double nl = Math.sqrt(nx * nx + ny * ny + nz * nz);
+                            if (nl < 1e-9) continue;
+                            nx /= nl; ny /= nl; nz /= nl;
+                            double az = Math.atan2(ny, nx);
+                            if (az < 0) az += 2 * Math.PI;
+                            if (roundIndices)   // snap the biased plane to a whole gear index too
+                                az = Math.round(az * designGear / (2 * Math.PI)) * 2 * Math.PI / designGear;
+                            double polar = Math.atan2(Math.hypot(nx, ny), nz);
+                            double cn = (nx * m[0] + ny * m[1] + nz * m[2]) - (thickness * lv) / 2;
+                            Plane plane = new Plane(P(nx, ny, nz), cn);
+                            Gem snap = new Gem(g);
+                            g = g.cut(designGear, cn, polar * 180.0 / Math.PI, az * designGear / (2 * Math.PI), plane, 1, false);
+                            g.update();
+                            int now = survOrig(g, origKeys);
+                            if (now < have) { g = snap; }
+                            else { have = now; cutOk = true; tiltedEdges++; break outer; }
+                        }
+                    }
+                }
+                if (!cutOk) skippedEdges++;
+                pv.setProgress("Cutting edges...", 5 + (int) (90L * (i + 1) / N));
+            }
+            g.mergeTiers();
             g.update();
         } catch (Throwable t) {
             done[0] = true;
@@ -309,12 +438,20 @@ public class FacetFroster {
         sb.append("</GemCutStudio>\n");
         try (Writer w = new OutputStreamWriter(new FileOutputStream(out), "UTF-8")) { w.write(sb.toString()); }
 
-        System.out.printf("Frosted %d edges -> %d polished + %d frosted facets in %d frost tiers%n",
-                gem.edges.size(), keep, frost, frTierCount);
-        if (lap.menu.Messages.lastMessage != null)
-            System.out.println("Note: the tool reported \""
-                    + lap.menu.Messages.lastMessage.replace("\n", " ").trim()
-                    + "\" (try a smaller width to keep all facets).");
+        System.out.printf("Frosted %d of %d edges -> %d polished + %d frosted facets in %d frost tiers%n",
+                gem.edges.size() - skippedEdges - girdleEdges, gem.edges.size(), keep, frost, frTierCount);
+        if (girdleEdges > 0)
+            System.out.println(girdleEdges + " girdle-adjacent edge(s) left unfrosted "
+                    + "(the norm for a cut stone; pass --girdle to frost them too).");
+        if (narrowedEdges > 0)
+            System.out.println(narrowedEdges + " edge(s) used a narrower band so the frosting "
+                    + "wouldn't consume a small facet.");
+        if (tiltedEdges > 0)
+            System.out.println(tiltedEdges + " shallow edge(s) used a steeper-tilted band "
+                    + "(a flat miter there would cut into the far side of the stone).");
+        if (skippedEdges > 0)
+            System.out.println("Skipped " + skippedEdges + " edge(s) that cannot be frosted "
+                    + "without consuming another facet.");
         System.out.println("Wrote " + out);
     }
 
@@ -341,7 +478,15 @@ public class FacetFroster {
                              List<double[][]> fverts, double tol) {
         Gem.maxError = tol;
         Gem gem = new Gem();
+        // new Gem() is NOT empty: it is a unit-cube blank (6 facets at +-1, 8
+        // points). Left in place, those phantom facets superimpose on the design
+        // (coinciding with girdle/table planes on stones that span +-1), corrupt
+        // the edge pairing, and get "obliterated" by legitimate bevels. Clear it.
+        gem.facets.clear();
+        gem.points.clear();
+        gem.edges.clear();
         Map<String, String> planeTier = new HashMap<>();
+        java.util.Set<String> origKeys = new java.util.HashSet<>();
         for (int i = 0; i < fnorm.size(); i++) {
             double[] n = fnorm.get(i);
             double nx = n[0], ny = n[1], nz = n[2];
@@ -354,16 +499,17 @@ public class FacetFroster {
                 int idx = gem.indexOfPoint(pt);
                 if (idx >= 0) pt = gem.points.get(idx); else gem.points.add(pt);
                 pts.add(pt);
-                cn += nx * v[0] + ny * v[1] + nz * v[2];
+                cn += nx * pt.getX() + ny * pt.getY() + nz * pt.getZ();  // deduped point, not raw
             }
             cn /= pts.size();
             fc.setPlane(new Plane(P(nx, ny, nz), cn));
             for (Point3D<Double> pt : pts) fc.points.add(pt);   // direct add
             gem.facets.add(fc);
             planeTier.put(key(nx, ny, nz, cn), ftier.get(i));
+            origKeys.add(key4(nx, ny, nz, cn));   // orig-plane key (file normal, avg cn, 1e-4)
         }
         gem.getEdgesFromFacets();
-        return new Object[]{gem, planeTier};
+        return new Object[]{gem, planeTier, origKeys};
     }
 
     static String renderBar(int pct, String status) {

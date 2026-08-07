@@ -129,7 +129,7 @@ javac -cp "build;<tool>" -d build src\FacetFroster.java src\FacetFrosterCkpt.jav
 ## Usage
 
 ```
-FacetFroster.exe <input.gcs> [width | N%] [-o out.gcs] [--fractional]   # or: java -jar FacetFroster.jar ...
+FacetFroster.exe <input.gcs> [width | N%] [-o out.gcs] [--fractional] [--girdle]   # or: java -jar FacetFroster.jar ...
 ```
 
 - Output defaults to `<input dir>\<name>_frosted.gcs`.
@@ -138,9 +138,14 @@ FacetFroster.exe <input.gcs> [width | N%] [-o out.gcs] [--fractional]   # or: ja
   smaller width (e.g. `0.3%`).
 - **Cutting indices:** by default every frosted facet is snapped to a **whole
   index** on the design's own gear, so it's practical to cut (setting a facet at
-  index 11.5 is a pain). A few edges that can't round cleanly are dropped as a
-  result. Pass **`--fractional`** to keep exact (fractional) indices instead —
-  maximum edge coverage, but some facets land between gear teeth.
+  index 11.5 is a pain). Pass **`--fractional`** to keep exact (fractional)
+  indices instead.
+- **Girdle:** girdle-adjacent edges are left unfrosted by default (the norm for
+  a cut stone — and a bevel pivoting off a short vertical girdle facet would
+  consume it). Pass **`--girdle`** to frost them too.
+- If an edge's full-width band would consume a small neighboring facet,
+  FacetFroster automatically uses a **narrower or steeper-tilted band** there
+  instead of destroying the facet, and reports what it did.
 
 Checkpointed (large/dense designs, many minutes) — a rolling window of 3 `.gcs`
 snapshots every `pct`%, so a crash/power-loss doesn't lose the whole run:

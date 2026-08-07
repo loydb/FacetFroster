@@ -26,8 +26,14 @@ public class FacetFrosterCkpt {
     static Map<String,String> tierDepth = new LinkedHashMap<>();
     static Map<String,String> tierInstr = new LinkedHashMap<>();
     static List<String> tierOrder = new ArrayList<>();
+    static java.util.Set<String> origKeys = new java.util.HashSet<>();  // original planes (file normal, avg cn, 1e-4)
 
     static String key(double nx,double ny,double nz,double cn){ return String.format("%.5f_%.5f_%.5f_%.5f",nx,ny,nz,cn); }
+    static String key4(double nx,double ny,double nz,double cn){ return String.format("%.4f_%.4f_%.4f_%.4f",nx,ny,nz,cn); }
+    static String checkKey4(Facet f){ Point3D<Double> n=f.getPlane().getNormal(); Point3D<Double> v=f.points.get(0);
+        return key4(n.getX(),n.getY(),n.getZ(), n.getX()*v.getX()+n.getY()*v.getY()+n.getZ()*v.getZ()); }
+    static int survOrig(Gem g){ java.util.Set<String> seen=new java.util.HashSet<>();
+        for(Facet f:g.facets){ if(f.points.size()<3) continue; String k=checkKey4(f); if(origKeys.contains(k)) seen.add(k); } return seen.size(); }
     static double cnOf(Facet f){ Point3D<Double> n=f.getPlane().getNormal(); Point3D<Double> v=f.points.get(0);
         return n.getX()*v.getX()+n.getY()*v.getY()+n.getZ()*v.getZ(); }
     static String keyOf(Facet f){ Point3D<Double> n=f.getPlane().getNormal(); return key(n.getX(),n.getY(),n.getZ(),cnOf(f)); }
@@ -38,6 +44,9 @@ public class FacetFrosterCkpt {
         Gem.maxError = tol;
         Document doc = parseSecure(new File(path));
         Gem gem = new Gem();
+        // new Gem() is a unit-cube blank (6 phantom facets at +-1) -- clear it
+        // or the phantoms superimpose on the design and corrupt edge pairing.
+        gem.facets.clear(); gem.points.clear(); gem.edges.clear();
         // carry the design's index gear so whole-index rounding snaps to real
         // cut positions (not the tool's default 96)
         NodeList idxN = doc.getElementsByTagName("index");
@@ -63,7 +72,7 @@ public class FacetFrosterCkpt {
                     Point3D<Double> pt=P(Double.parseDouble(ve.getAttribute("x")),Double.parseDouble(ve.getAttribute("y")),Double.parseDouble(ve.getAttribute("z")));
                     int idx=gem.indexOfPoint(pt); if(idx>=0) pt=gem.points.get(idx); else gem.points.add(pt); pts.add(pt); cn+=nx*pt.getX()+ny*pt.getY()+nz*pt.getZ();}
                 cn/=pts.size(); fc.setPlane(new Plane(P(nx,ny,nz),cn)); for(Point3D<Double> pt:pts) fc.points.add(pt); gem.facets.add(fc);
-                if(isOriginal) planeTier.put(key(nx,ny,nz,cn), tn);
+                if(isOriginal){ planeTier.put(key(nx,ny,nz,cn), tn); origKeys.add(key4(nx,ny,nz,cn)); }
             }
         }
         gem.getEdgesFromFacets();
@@ -81,13 +90,15 @@ public class FacetFrosterCkpt {
     public static void main(String[] args) throws Exception {
         // whole gear indices by default (cuttable); --fractional allows fractional
         boolean roundIndices = true;
+        boolean frostGirdle = false;
         java.util.List<String> pos = new java.util.ArrayList<>();
         for (String a : args) {
             if (a.equals("--fractional") || a.equals("-f")) roundIndices = false;
+            else if (a.equals("--girdle") || a.equals("-g")) frostGirdle = true;
             else pos.add(a);
         }
         if (pos.size() < 4) {
-            System.err.println("usage: FacetFrosterCkpt <input.gcs> <output.gcs> <width|N%> <ckptDir> [pct] [--fractional]");
+            System.err.println("usage: FacetFrosterCkpt <input.gcs> <output.gcs> <width|N%> <ckptDir> [pct] [--fractional] [--girdle]");
             System.exit(2);
         }
         String in=pos.get(0), out=pos.get(1), widthArg=pos.get(2), dir=pos.get(3);
@@ -122,12 +133,18 @@ public class FacetFrosterCkpt {
             gear = g.getMetadata()!=null ? g.getMetadata().gear : 96;
             System.setOut(nul);
             params = new ArrayList<>();
-            for(Edge e:g.edges){ Double[] p=g.getEdgeParameters(e, thickness, roundIndices, gear);
+            int girdleSkipped = 0;
+            for(Edge e:g.edges){
+                // girdle-adjacent edges excluded by default (same as FacetFroster);
+                // filtered here so the saved params file stays resume-coherent
+                if(!frostGirdle && (e.facets.get(0).isGirdle() || e.facets.get(1).isGirdle())){ girdleSkipped++; continue; }
+                Double[] p=g.getEdgeParameters(e, thickness, roundIndices, gear);
                 params.add(new double[]{p[0],p[1],p[2],p[3],p[4],p[5]}); }
             System.setOut(real);
             saveParams(paramsF, params, gear, tol);
             startIdx=0;
-            System.out.printf("Model width %.3f, bevel %.4f, %d edges, weld %.0e%n", modelW, thickness, params.size(), tol);
+            System.out.printf("Model width %.3f, bevel %.4f, %d edges (%d girdle-adjacent excluded), weld %.0e%n",
+                    modelW, thickness, params.size(), girdleSkipped, tol);
         } else {
             try {
                 Object[] pr = loadParams(paramsF); params=(List<double[]>)pr[0]; gear=(int)pr[1]; double ptol=(double)pr[2];
@@ -151,13 +168,18 @@ public class FacetFrosterCkpt {
         final ProgressValue pv=new ProgressValue();
         final boolean[] done={false};
         Thread bar=new Thread(()->{ String last=""; while(!done[0]){ int done2= (int)(0); try{Thread.sleep(200);}catch(Exception e){break;} } });
+        int have = survOrig(g); int skipped = 0;
         // simple progress print
         for(int i=startIdx;i<N;i++){
             double[] p=params.get(i);
             Plane plane=new Plane(P(p[3],p[4],p[5]), p[2]);
             System.setOut(nul);
+            Gem snap = new Gem(g);
             g=g.cut(gear, p[2], p[0]*180.0/Math.PI, p[1]*gear/(2*Math.PI), plane, 1, false);
             g.update();
+            int now = survOrig(g);
+            if (now < have) { g = snap; skipped++; }   // would obliterate an original facet -> skip
+            else have = now;
             System.setOut(real);
             if((i+1)%step==0 || i==N-1){
                 System.setOut(nul); saveCheckpoint(g, dir, i); System.setOut(real);
@@ -169,7 +191,7 @@ public class FacetFrosterCkpt {
         System.out.println();
         System.setOut(nul); g.mergeTiers(); writeFinal(g, in, out); System.setOut(real);
         int frost=0; for(Facet f:g.facets){ if(f.points.size()<3) continue; if(!planeTier.containsKey(keyOf(f))) frost++; }
-        System.out.println("Done. "+g.facets.size()+" facets ("+frost+" frosted). Wrote "+out);
+        System.out.println("Done. "+g.facets.size()+" facets ("+frost+" frosted, "+skipped+" edges skipped to avoid holes). Wrote "+out);
         if(lap.menu.Messages.lastMessage!=null) System.out.println("Note: "+lap.menu.Messages.lastMessage.replace("\n"," ").trim());
     }
 
@@ -251,7 +273,8 @@ public class FacetFrosterCkpt {
     static Gem loadState(File f) throws Exception {
         Gem.maxError=1e-9;
         List<String> lines=Files.readAllLines(f.toPath());
-        Gem g=new Gem(); int li=0;
+        Gem g=new Gem(); g.facets.clear(); g.points.clear(); g.edges.clear();  // clear the unit-cube blank
+        int li=0;
         String[] ph=lines.get(li++).split("\\s+"); int np=Integer.parseInt(ph[1]);
         for(int i=0;i<np;i++){ String[] t=lines.get(li++).split("\\s+");
             g.points.add(P(Double.parseDouble(t[0]),Double.parseDouble(t[1]),Double.parseDouble(t[2]))); }
