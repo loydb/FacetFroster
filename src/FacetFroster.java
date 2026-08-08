@@ -195,9 +195,8 @@ public class FacetFroster {
 
         // Use the design's own index gear so whole-index rounding snaps to
         // positions the design is actually cut on (not the tool's default 96).
-        // Passed explicitly to getEdgeParameters/cut below -- we deliberately do
-        // NOT call gem.setMetadata(): a metadata object with zeroed base/symmetry/
-        // mirror corrupts the frosting geometry (over-consumes facets).
+        // Passed explicitly to getEdgeParameters/cut below, so no metadata on the
+        // gem is needed.
         int designGear = 96;
         NodeList idxN = doc.getElementsByTagName("index");
         if (idxN.getLength() > 0) {
@@ -233,23 +232,26 @@ public class FacetFroster {
         bar.start();
         // The tool's modal warning dialogs are neutralized by shadowing
         // lap.menu.Messages (routes them to the console), so no dialog can block.
+        // Silence its console output too for the duration of the loop: trial cuts
+        // that get reverted fire "facets overwritten" warnings that don't apply
+        // to the final result (our own summary reports what actually happened).
         lap.menu.Messages.lastMessage = null;
+        PrintStream realErr = System.err;
         System.setOut(nul);
+        System.setErr(nul);
         Gem g;
         int skippedEdges = 0, narrowedEdges = 0, girdleEdges = 0, tiltedEdges = 0;
         try {
             // Drive the frosting edge-by-edge (validated identical to the tool's
-            // own cutFrostedEdges) so we can SKIP any bevel that would obliterate
-            // an original facet -- on some designs a full-width edge cut consumes
-            // a whole small/shallow facet, leaving a hole. We cut on a copy, keep
-            // it only if every original facet survives, else leave that edge
-            // unfrosted.
-            // Per-edge bevel parameters at several widths, all computed upfront
-            // from the original topology (the tool's own two-phase approach).
-            // When the full-width bevel would consume a whole facet, retry that
-            // edge at 1/2, 1/4, 1/8, 1/16 width: a narrower frost band beats a
-            // hole OR an unfrosted edge. Only a degenerate edge (even a sliver
-            // band consumes the facet) is left unfrosted.
+            // own cutFrostedEdges) with the guarantee that NO original facet is
+            // ever destroyed: each bevel is cut on a copy and kept only if every
+            // original facet survives. If the full-width band would consume a
+            // small facet, the edge falls back to a narrower band (1/2, 1/4,
+            // 1/8, 1/16 width), then to a steeper-tilted band (see below); only
+            // an edge where every variant would destroy a neighbor -- which no
+            // tested design has -- is left unfrosted, and that is reported.
+            // All bevel parameters are computed upfront from the original
+            // topology (the tool's own two-phase approach).
             final double[] LEVELS = {1.0, 0.5, 0.25, 0.125, 0.0625};
             java.util.List<java.util.List<double[]>> paramsL = new java.util.ArrayList<>();
             for (double lv : LEVELS) {
@@ -340,12 +342,14 @@ public class FacetFroster {
         } catch (Throwable t) {
             done[0] = true;
             System.setOut(real);
+            System.setErr(realErr);
             System.err.println("\nERROR: frosting failed on this design (" + t.getClass().getSimpleName()
                     + "). Its geometry may be degenerate; try a smaller width.");
             System.exit(1);
             return;
         }
         System.setOut(real);
+        System.setErr(realErr);
         done[0] = true;
         try { bar.join(300); } catch (InterruptedException e) { }
         real.print("\r" + renderBar(100, "Done") + "\n");

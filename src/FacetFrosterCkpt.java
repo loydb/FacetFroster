@@ -27,6 +27,7 @@ public class FacetFrosterCkpt {
     static Map<String,String> tierInstr = new LinkedHashMap<>();
     static List<String> tierOrder = new ArrayList<>();
     static java.util.Set<String> origKeys = new java.util.HashSet<>();  // original planes (file normal, avg cn, 1e-4)
+    static final double[] LEVELS = {1.0, 0.5, 0.25, 0.125, 0.0625};     // band-width fallback ladder (same as FacetFroster)
 
     static String key(double nx,double ny,double nz,double cn){ return String.format("%.5f_%.5f_%.5f_%.5f",nx,ny,nz,cn); }
     static String key4(double nx,double ny,double nz,double cn){ return String.format("%.4f_%.4f_%.4f_%.4f",nx,ny,nz,cn); }
@@ -138,8 +139,20 @@ public class FacetFrosterCkpt {
                 // girdle-adjacent edges excluded by default (same as FacetFroster);
                 // filtered here so the saved params file stays resume-coherent
                 if(!frostGirdle && (e.facets.get(0).isGirdle() || e.facets.get(1).isGirdle())){ girdleSkipped++; continue; }
-                Double[] p=g.getEdgeParameters(e, thickness, roundIndices, gear);
-                params.add(new double[]{p[0],p[1],p[2],p[3],p[4],p[5]}); }
+                // row = 5 width levels x 6 params + facet normals + edge midpoint
+                // (the extra data powers the narrower/steeper-band fallbacks)
+                double[] row = new double[LEVELS.length*6 + 9];
+                for(int l=0;l<LEVELS.length;l++){
+                    Double[] p=g.getEdgeParameters(e, thickness*LEVELS[l], roundIndices, gear);
+                    for(int k2=0;k2<6;k2++) row[l*6+k2]=p[k2];
+                }
+                Point3D<Double> na=e.facets.get(0).getPlane().getNormal(), nb=e.facets.get(1).getPlane().getNormal();
+                row[30]=na.getX(); row[31]=na.getY(); row[32]=na.getZ();
+                row[33]=nb.getX(); row[34]=nb.getY(); row[35]=nb.getZ();
+                row[36]=(e.getPoint1().getX()+e.getPoint2().getX())/2;
+                row[37]=(e.getPoint1().getY()+e.getPoint2().getY())/2;
+                row[38]=(e.getPoint1().getZ()+e.getPoint2().getZ())/2;
+                params.add(row); }
             System.setOut(real);
             saveParams(paramsF, params, gear, tol);
             startIdx=0;
@@ -168,18 +181,54 @@ public class FacetFrosterCkpt {
         final ProgressValue pv=new ProgressValue();
         final boolean[] done={false};
         Thread bar=new Thread(()->{ String last=""; while(!done[0]){ int done2= (int)(0); try{Thread.sleep(200);}catch(Exception e){break;} } });
-        int have = survOrig(g); int skipped = 0;
-        // simple progress print
+        int have = survOrig(g); int skipped = 0, narrowed = 0, tilted = 0;
+        // Same no-facet-destroyed guarantee + fallback chain as FacetFroster:
+        // full-width band -> narrower bands -> steeper-tilted band -> (only if
+        // every variant would consume a neighbor) leave the edge unfrosted.
+        // stderr silenced too: reverted trial cuts fire "facets overwritten"
+        // warnings that don't apply to the final result.
+        PrintStream realErr = System.err;
+        System.setErr(nul);
         for(int i=startIdx;i<N;i++){
-            double[] p=params.get(i);
-            Plane plane=new Plane(P(p[3],p[4],p[5]), p[2]);
+            double[] row=params.get(i);
             System.setOut(nul);
-            Gem snap = new Gem(g);
-            g=g.cut(gear, p[2], p[0]*180.0/Math.PI, p[1]*gear/(2*Math.PI), plane, 1, false);
-            g.update();
-            int now = survOrig(g);
-            if (now < have) { g = snap; skipped++; }   // would obliterate an original facet -> skip
-            else have = now;
+            boolean cutOk=false;
+            for(int L=0; L<LEVELS.length && !cutOk; L++){
+                double[] p=Arrays.copyOfRange(row, L*6, L*6+6);
+                Plane plane=new Plane(P(p[3],p[4],p[5]), p[2]);
+                Gem snap = new Gem(g);
+                g=g.cut(gear, p[2], p[0]*180.0/Math.PI, p[1]*gear/(2*Math.PI), plane, 1, false);
+                g.update();
+                int now = survOrig(g);
+                if (now < have) { g = snap; }                  // still eats a facet -> narrower
+                else { have = now; cutOk = true; if (L>0) narrowed++; }
+            }
+            if(!cutOk){
+                // steeper-tilted band (shallow crown/table edges whose flat miter
+                // would cut into the far side of the stone)
+                double[] a={row[30],row[31],row[32]}, b={row[33],row[34],row[35]}, m={row[36],row[37],row[38]};
+                double[] sh = Math.abs(a[2])>=Math.abs(b[2]) ? a : b;
+                double[] st = (sh==a) ? b : a;
+                outer:
+                for(double t : new double[]{0.75, 0.9}){
+                    for(double lv : new double[]{1.0, 0.5, 0.25}){
+                        double nx=(1-t)*sh[0]+t*st[0], ny=(1-t)*sh[1]+t*st[1], nz=(1-t)*sh[2]+t*st[2];
+                        double nl=Math.sqrt(nx*nx+ny*ny+nz*nz); if(nl<1e-9) continue;
+                        nx/=nl; ny/=nl; nz/=nl;
+                        double az=Math.atan2(ny,nx); if(az<0) az+=2*Math.PI;
+                        if(roundIndices) az=Math.round(az*gear/(2*Math.PI))*2*Math.PI/gear;
+                        double polar=Math.atan2(Math.hypot(nx,ny), nz);
+                        double cn=(nx*m[0]+ny*m[1]+nz*m[2]) - (thickness*lv)/2;
+                        Gem snap=new Gem(g);
+                        g=g.cut(gear, cn, polar*180.0/Math.PI, az*gear/(2*Math.PI), new Plane(P(nx,ny,nz),cn), 1, false);
+                        g.update();
+                        int now=survOrig(g);
+                        if(now<have){ g=snap; }
+                        else { have=now; cutOk=true; tilted++; break outer; }
+                    }
+                }
+            }
+            if(!cutOk) skipped++;
             System.setOut(real);
             if((i+1)%step==0 || i==N-1){
                 System.setOut(nul); saveCheckpoint(g, dir, i); System.setOut(real);
@@ -189,10 +238,14 @@ public class FacetFrosterCkpt {
             }
         }
         System.out.println();
-        System.setOut(nul); g.mergeTiers(); writeFinal(g, in, out); System.setOut(real);
+        System.setOut(nul); g.mergeTiers(); writeFinal(g, in, out);   // mergeTiers can fire a stale
+        System.setOut(real); System.setErr(realErr);                   // "overwritten" warning -> restore after
         int frost=0; for(Facet f:g.facets){ if(f.points.size()<3) continue; if(!planeTier.containsKey(keyOf(f))) frost++; }
-        System.out.println("Done. "+g.facets.size()+" facets ("+frost+" frosted, "+skipped+" edges skipped to avoid holes). Wrote "+out);
-        if(lap.menu.Messages.lastMessage!=null) System.out.println("Note: "+lap.menu.Messages.lastMessage.replace("\n"," ").trim());
+        System.out.println("Done. "+g.facets.size()+" facets ("+frost+" frosted"
+                +(narrowed>0?", "+narrowed+" edges used a narrower band":"")
+                +(tilted>0?", "+tilted+" a steeper-tilted band":"")
+                +(skipped>0?", "+skipped+" left unfrosted (every band variant would consume a facet)":"")
+                +"). Wrote "+out);
     }
 
     static String bar(int p){ int f=p*20/100; StringBuilder b=new StringBuilder(); for(int i=0;i<20;i++) b.append(i<f?'#':' '); return b.toString(); }
@@ -207,17 +260,23 @@ public class FacetFrosterCkpt {
         return new double[]{minx,maxx,miny,maxy};
     }
 
+    static final int ROW_LEN = LEVELS.length*6 + 9;   // 5 width levels x 6 params + na,nb,mid
+
     static void saveParams(File f, List<double[]> params, int gear, double tol) throws Exception {
-        StringBuilder sb=new StringBuilder(); sb.append(gear).append(' ').append(tol).append('\n');
-        for(double[] p:params) sb.append(p[0]+" "+p[1]+" "+p[2]+" "+p[3]+" "+p[4]+" "+p[5]+"\n");
+        StringBuilder sb=new StringBuilder(); sb.append(gear).append(' ').append(tol).append(' ').append(ROW_LEN).append('\n');
+        for(double[] p:params){ for(int k=0;k<p.length;k++){ if(k>0) sb.append(' '); sb.append(p[k]); } sb.append('\n'); }
         Files.write(f.toPath(), sb.toString().getBytes("UTF-8"));
     }
     static Object[] loadParams(File f) throws Exception {
         List<String> lines=Files.readAllLines(f.toPath());
         String[] h=lines.get(0).trim().split("\\s+"); int gear=Integer.parseInt(h[0]); double tol=Double.parseDouble(h[1]);
+        if (h.length < 3 || Integer.parseInt(h[2]) != ROW_LEN)
+            throw new IndexOutOfBoundsException("params file from an older version");  // caught -> "checkpoint corrupt"
         List<double[]> params=new ArrayList<>();
-        for(int i=1;i<lines.size();i++){ String[] t=lines.get(i).trim().split("\\s+"); if(t.length<6) continue;
-            params.add(new double[]{Double.parseDouble(t[0]),Double.parseDouble(t[1]),Double.parseDouble(t[2]),Double.parseDouble(t[3]),Double.parseDouble(t[4]),Double.parseDouble(t[5])}); }
+        for(int i=1;i<lines.size();i++){ String[] t=lines.get(i).trim().split("\\s+"); if(t.length<ROW_LEN) continue;
+            double[] row=new double[ROW_LEN];
+            for(int k=0;k<ROW_LEN;k++) row[k]=Double.parseDouble(t[k]);
+            params.add(row); }
         return new Object[]{params, gear, tol};
     }
 

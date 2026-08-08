@@ -151,7 +151,7 @@ Checkpointed (large/dense designs, many minutes) — a rolling window of 3 `.gcs
 snapshots every `pct`%, so a crash/power-loss doesn't lose the whole run:
 
 ```
-java -cp out\FacetFroster.jar FacetFrosterCkpt <in.gcs> <out.gcs> <width|N%> <ckptDir> [pct]
+java -cp out\FacetFroster.jar FacetFrosterCkpt <in.gcs> <out.gcs> <width|N%> <ckptDir> [pct] [--fractional] [--girdle]
 ```
 
 `scripts\facetfroster_checkpointed.ps1` wraps that with auto-restart on a true hang.

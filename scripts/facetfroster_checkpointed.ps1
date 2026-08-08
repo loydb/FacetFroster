@@ -16,12 +16,14 @@
 # Usage:
 #   powershell -File facetfroster_checkpointed.ps1 -InputGcs design.gcs [-OutputGcs out.gcs]
 #             [-Jar out\FacetFroster.jar] [-Width 1%] [-Viewer path\to\gcs_viewer.py]
+#             [-ExtraArgs "--fractional","--girdle"]
 param(
   [Parameter(Mandatory=$true)][string]$InputGcs,
   [string]$OutputGcs,
   [string]$Jar,                      # built FacetFroster.jar (build_exe.ps1 makes it); has FacetFrosterCkpt + Messages shadow
   [string]$Width = "1%",
   [string]$Viewer,                   # optional: path to gcs_viewer.py to render on success
+  [string[]]$ExtraArgs = @(),        # passed through to FacetFrosterCkpt (--fractional, --girdle)
   [int]$StallLimit = 900             # seconds with no checkpoint-progress advance => treat as hung
 )
 $ErrorActionPreference = "Continue"
@@ -55,7 +57,7 @@ for ($attempt = 1; $attempt -le 6 -and -not $success; $attempt++) {
   Remove-Item $cd -Recurse -Force -EA SilentlyContinue; New-Item -ItemType Directory -Force $cd | Out-Null
   Remove-Item $OutputGcs -EA SilentlyContinue
   Log "attempt ${attempt}: launching FacetFrosterCkpt"
-  $proc = Start-Process -FilePath "java" -ArgumentList @("-cp","$Jar","FacetFrosterCkpt",$InputGcs,$OutputGcs,$Width,$cd,"10") `
+  $proc = Start-Process -FilePath "java" -ArgumentList (@("-cp","$Jar","FacetFrosterCkpt",$InputGcs,$OutputGcs,$Width,$cd,"10") + $ExtraArgs) `
     -RedirectStandardOutput (Join-Path $here "run_ck.log") -RedirectStandardError (Join-Path $here "run_ck.err") -WindowStyle Hidden -PassThru
 
   $lastProg = -1; $lastAdvance = Get-Date
